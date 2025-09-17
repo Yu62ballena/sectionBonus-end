@@ -2,12 +2,14 @@ type InputFormProps = {
   isRegisterMode: boolean;
   handleInput: (formData: FormData) => Promise<void>;
   handleSearch: (formData: FormData) => Promise<void>;
+  isPending: boolean;
 };
 
 export function InputForm({
   isRegisterMode,
   handleInput,
   handleSearch,
+  isPending,
 }: InputFormProps) {
   return (
     <form
@@ -23,12 +25,14 @@ export function InputForm({
             : "タイトルやサイト名で検索"
         }
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+        disabled={isPending}
       />
       <button
         type="submit"
         className="hidden md:block w-28 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+        disabled={isPending}
       >
-        {isRegisterMode ? "登録" : "検索"}
+        {isPending ? "処理中..." : isRegisterMode ? "登録" : "検索"}
       </button>
     </form>
   );

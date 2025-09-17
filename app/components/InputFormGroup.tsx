@@ -1,17 +1,22 @@
-import { useEffect, useState } from "react";
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
 import { extractUrlData } from "../actions/articles/extract-url-data";
 import { saveArticle } from "../actions/articles/save-article";
 import FormMessage from "./FormMessage";
 import { urlRegistrationSchema } from "@/lib/validations/urlRegistrationSchema";
 import ToggleSwitch from "./ToggleSwitch";
-import { redirect } from "next/navigation";
 import { searchKeywordRegistrationSchema } from "@/lib/validations/searchKeywordRegistrationSchema";
 import { InputForm } from "./InputForm";
 import { getCurrentUserId } from "@/lib/getCurrentUserId";
+import { useRouter } from "next/navigation";
 
 function InputFormGroup() {
   const [error, setError] = useState<string>("");
+  const [success, setSuccess] = useState<string>("");
   const [isRegisterMode, setIsRegisterMode] = useState<boolean>(false);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   useEffect(() => {
     if (error) {
@@ -23,64 +28,94 @@ function InputFormGroup() {
     }
   }, [error]);
 
-  const handleInput = async (formData: FormData) => {
-    try {
-      const keys = Array.from(formData.keys());
-      console.log("送信されたキー:", keys);
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess("");
+      }, 3000);
 
-      const url = formData.get("url") as string;
-      const validationResult = urlRegistrationSchema.safeParse({ url });
-
-      if (!validationResult.success) {
-        const errorMessage = validationResult.error.issues
-          .map((issue) => issue.message)
-          .join(",");
-
-        setError(errorMessage);
-        return;
-      }
-
-      const articleData = await extractUrlData(formData);
-      console.log("記事データ", articleData);
-
-      if (!articleData) {
-        return;
-      }
-
-      // サーバーアクションを使ってDBに保存する処理をかければいい
-      const userId = await getCurrentUserId();
-      const result = await saveArticle(articleData, userId);
-
-      if (!result.success) {
-        setError(result.errorMessage || "予期しないエラーが発生しました");
-      }
-    } catch (err) {
-      console.error(err);
+      return () => clearTimeout(timer);
     }
+  }, [success]);
+
+  const handleInput = async (formData: FormData) => {
+    setError("");
+    setSuccess("");
+
+    startTransition(async () => {
+      try {
+        const url = formData.get("url") as string;
+        const validationResult = urlRegistrationSchema.safeParse({ url });
+
+        if (!validationResult.success) {
+          const errorMessage = validationResult.error.issues
+            .map((issue) => issue.message)
+            .join(",");
+
+          setError(errorMessage);
+          return;
+        }
+
+        const articleData = await extractUrlData(formData);
+        
+        if (!articleData) {
+          setError("記事データの取得に失敗しました");
+          return;
+        }
+
+        const userId = await getCurrentUserId();
+        const result = await saveArticle(articleData, userId);
+
+        if (!result.success) {
+          setError(result.errorMessage || "予期しないエラーが発生しました");
+        } else {
+          setSuccess("記事を保存しました！");
+          
+          // フォームをリセット
+          const form = document.querySelector("form") as HTMLFormElement;
+          if (form) {
+            form.reset();
+          }
+          
+          router.refresh();
+        }
+      } catch (err) {
+        console.error(err);
+        setError("記事の保存に失敗しました");
+      }
+    });
   };
 
   const handleSearch = async (formData: FormData) => {
-    const keyword = formData.get("keyword") as string;
-    const validationResult = searchKeywordRegistrationSchema.safeParse({
-      keyword,
+    setError("");
+    
+    startTransition(async () => {
+      try {
+        const keyword = formData.get("keyword") as string;
+        const validationResult = searchKeywordRegistrationSchema.safeParse({
+          keyword,
+        });
+
+        if (!validationResult.success) {
+          const errorMessage = validationResult.error.issues
+            .map((issue) => issue.message)
+            .join(",");
+
+          setError(errorMessage);
+          return;
+        }
+
+        if (!keyword || keyword.trim() === "") {
+          return;
+        }
+
+        const redirectUrl = `/?keyword=${encodeURIComponent(keyword)}`;
+        router.push(redirectUrl);
+      } catch (err) {
+        console.error(err);
+        setError("検索に失敗しました");
+      }
     });
-
-    if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues
-        .map((issue) => issue.message)
-        .join(",");
-
-      setError(errorMessage);
-      return;
-    }
-
-    if (!keyword || keyword.trim() === "") {
-      return;
-    }
-
-    const redirectUrl = `/?keyword=${encodeURIComponent(keyword)}`;
-
-    redirect(redirectUrl);
   };
 
   return (
@@ -97,10 +132,16 @@ function InputFormGroup() {
           isRegisterMode={isRegisterMode}
           handleInput={handleInput}
           handleSearch={handleSearch}
+          isPending={isPending}
         />
       </div>
 
       {error && <FormMessage error={error} />}
+      {success && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-green-50 border border-green-200 rounded-md p-3 shadow-lg z-10">
+          <p className="text-green-700 text-sm">{success}</p>
+        </div>
+      )}
     </div>
   );
 }
